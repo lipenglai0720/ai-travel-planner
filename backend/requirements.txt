@@ -1,0 +1,8 @@
+# Web API 框架。
+fastapi==0.141.1
+
+# 运行 FastAPI 应用的服务器。
+uvicorn==0.52.4
+
+# FastAPI 使用的数据处理依赖，固定到已核对的兼容版本。
+pydantic==2.13.5
