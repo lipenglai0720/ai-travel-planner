@@ -1,9 +1,11 @@
-"""后端应用入口：创建 FastAPI 应用并注册健康检查接口。"""
+"""后端应用入口：创建 FastAPI 应用，并接入各功能模块的路由。"""
 
 from fastapi import FastAPI
 
+from app.api.routes.health import router as health_router
 
-# FastAPI 是一个类；调用 FastAPI(...) 会创建应用对象。
+
+# 创建整个后端应用。
 # title、description、version 会展示在自动生成的接口文档中。
 app = FastAPI(
     title="AI 智能旅行规划系统",
@@ -11,17 +13,6 @@ app = FastAPI(
     version="0.1.0",
 )
 
-
-# 将下面的函数注册为 GET /health 请求的处理函数。
-# summary 和 tags 用于说明接口、组织接口文档。
-@app.get(
-    "/health",
-    summary="检查后端服务是否运行",
-    tags=["系统检查"],
-)
-def health_check() -> dict[str, str]:
-    """返回当前服务标识，用于确认后端能够正常响应请求。"""
-    return {
-        "status": "ok",
-        "service": "ai-travel-planner",
-    }
+# 将健康检查模块中的路由接入应用。
+# 接入后，应用才能通过 GET /health 调用对应的处理函数。
+app.include_router(health_router)
