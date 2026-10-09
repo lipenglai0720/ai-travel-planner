@@ -1,13 +1,41 @@
-"""旅行相关的请求模型：定义用户输入字段及其校验规则。"""
+"""旅行请求模型：定义输入字段、跨字段规则及旅行天数计算。"""
 
 from datetime import date
-from typing import Literal
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+# 按总体开发文档，初版最多支持 7 天旅行。
+# 将上限集中定义在这里，避免在多个位置重复写数字。
+MAX_TRIP_DAYS = 7
+
+
+def calculate_day_count(start_date: date, end_date: date) -> int:
+    """计算包含开始日和结束日的旅行天数。
+
+    参数：
+        start_date：已经解析完成的开始日期。
+        end_date：已经解析完成的结束日期。
+
+    返回：
+        包含首尾两天的旅行天数。
+
+    异常：
+        结束日期早于开始日期时，抛出 ValueError。
+    """
+
+    # 必须先检查日期顺序，避免产生 0 天或负数天数。
+    if end_date < start_date:
+        raise ValueError("结束日期不能早于开始日期")
+
+    # 两个 date 对象相减，得到 timedelta。
+    # .days 取得相差的天数；加 1 后包含开始日和结束日。
+    return (end_date - start_date).days + 1
 
 
 class TripRequest(BaseModel):
-    """旅行规划请求；当前版本执行各字段的类型和范围校验。"""
+    """旅行规划请求；执行字段校验和跨字段业务校验。"""
 
     model_config = ConfigDict(
         # 拒绝模型中未定义的字段，便于发现客户端字段拼写错误。
@@ -97,3 +125,36 @@ class TripRequest(BaseModel):
         default="relaxed",
         description="游玩节奏：轻松、均衡或紧凑。",
     )
+
+    @model_validator(mode="after")
+    def validate_trip_rules(self) -> Self:
+        """在字段校验完成后，检查多个字段之间的业务关系。"""
+
+        # 此时 start_date 和 end_date 已经是 date 对象。
+        # 日期倒置时，计算函数会抛出 ValueError。
+        day_count = calculate_day_count(
+            self.start_date,
+            self.end_date,
+        )
+
+        if day_count > MAX_TRIP_DAYS:
+            raise ValueError(
+                f"旅行天数不能超过 {MAX_TRIP_DAYS} 天"
+            )
+
+        # 初版按出行人员使用的房间进行预算估算。
+        # 在该产品规则下，房间数不得超过出行人数。
+        if self.room_count > self.travelers:
+            raise ValueError("房间数不能超过出行人数")
+
+        # after 模型校验器必须返回通过校验的模型对象。
+        return self
+
+    @property
+    def day_count(self) -> int:
+        """根据起止日期计算旅行天数，供其他模块读取。"""
+
+        return calculate_day_count(
+            self.start_date,
+            self.end_date,
+        )
