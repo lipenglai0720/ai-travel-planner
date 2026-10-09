@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # 应用名称长度必须在 1～100 个字符之间。
     # 如果环境变量和 .env 都没有提供该项，就使用 default。
     app_name: str = Field(
-        default="AI 智能旅行规划系统",
+        default="AI智能旅行规划系统",
         min_length=1,
         max_length=100,
         description="应用名称，展示在自动生成的接口文档中。",
