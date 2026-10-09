@@ -4,5 +4,8 @@ fastapi==0.141.1
 # 运行 FastAPI 应用的服务器。
 uvicorn==0.52.4
 
-# FastAPI 使用的数据处理依赖，固定到已核对的兼容版本。
+# 数据校验库，用于请求、响应以及配置模型。
 pydantic==2.13.5
+
+# 读取环境变量和 .env 文件，并校验配置。
+pydantic-settings==2.15.0
