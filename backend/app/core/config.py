@@ -1,53 +1,65 @@
-"""应用配置：读取环境变量和 .env 文件，并校验配置值。"""
+"""读取并校验应用配置。"""
 
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, HttpUrl, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-# 当前文件的位置是：
-# backend/app/core/config.py
-#
-# parents[0] 是 core 目录。
-# parents[1] 是 app 目录。
-# parents[2] 是 backend 目录。
-#
-# 使用配置文件自身的位置确定 backend 目录，
-# 让 .env 的查找位置不依赖终端当前所在的目录。
+# config.py 位于 backend/app/core/ 中。
+# parents[2] 对应 backend 目录，使 .env 的读取位置保持明确。
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    """基础配置模型：创建对象时读取配置，并检查字段是否合法。"""
+    """应用配置，由环境变量、.env 文件和默认值提供。"""
 
-    # 应用名称长度必须在 1～100 个字符之间。
-    # 如果环境变量和 .env 都没有提供该项，就使用 default。
     app_name: str = Field(
-        default="AI智能旅行规划系统",
+        default="AI 智能旅行规划系统",
         min_length=1,
         max_length=100,
         description="应用名称，展示在自动生成的接口文档中。",
     )
 
-    # Literal 列出允许的值。
-    # Pydantic 会根据这个类型声明执行校验。
-    app_env: Literal["development", "test", "production"] = "development"
+    app_env: Literal[
+        "development",
+        "test",
+        "production",
+    ] = "development"
 
-    # 下面定义配置的读取规则。
+    # 允许尚未配置模型 Key 时启动已有的预览接口。
+    # 真正发送模型请求前，调用脚本会检查 Key 是否填写。
+    llm_api_key: SecretStr | None = Field(
+        default=None,
+        description="大模型服务的 API Key。",
+    )
+
+    # HttpUrl 会校验 URL 格式，但不会验证服务是否能连接。
+    llm_base_url: HttpUrl = Field(
+        default="https://api.deepseek.com",
+        description="兼容聊天接口的服务根地址。",
+    )
+
+    llm_model: str = Field(
+        default="deepseek-flash",
+        min_length=1,
+        description="服务商提供的模型名称。",
+    )
+
+    # 30 秒为当前开发默认值。
+    # 120 秒上限是本阶段的配置策略，后续可根据调用需求调整。
+    llm_timeout_seconds: float = Field(
+        default=30.0,
+        gt=0,
+        le=120,
+        description="传给 HTTP 客户端的超时参数，单位为秒。",
+    )
+
     model_config = SettingsConfigDict(
-        # 从 backend/.env 读取本地配置。
         env_file=BACKEND_DIR / ".env",
-
-        # 使用 UTF-8，确保中文应用名称能够正常读取。
         env_file_encoding="utf-8",
-
-        # 环境变量名称不区分大小写。
-        # APP_NAME 对应 app_name，APP_ENV 对应 app_env。
         case_sensitive=False,
-
-        # .env 中出现未定义的配置项时，报错提醒。
-        # 例如把 APP_NAME 拼成 APP_NMAE，可以尽早发现问题。
         extra="forbid",
+        hide_input_in_errors=True,
     )

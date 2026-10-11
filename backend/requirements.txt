@@ -1,11 +1,16 @@
-# Web API 框架。
+# Web 框架与服务启动器。
 fastapi==0.141.1
-
-# 运行 FastAPI 应用的服务器。
 uvicorn==0.52.4
 
-# 数据校验库，用于请求、响应以及配置模型。
+# 数据校验与配置管理。
 pydantic==2.13.5
-
-# 读取环境变量和 .env 文件，并校验配置。
 pydantic-settings==2.15.0
+
+# 保留上一节直接调用模型使用的 SDK。
+openai==2.49.0
+
+# LangChain 基础组件和 DeepSeek 适配器。
+# 同时固定适配器依赖的 langchain-openai，控制本阶段的版本组合。
+langchain-core==1.6.9
+langchain-openai==1.7.0
+langchain-deepseek==1.1.1
