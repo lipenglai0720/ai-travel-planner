@@ -2,7 +2,7 @@
 
 from datetime import date
 from typing import Literal, Self
-
+from pydantic_core import PydanticCustomError
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -128,26 +128,39 @@ class TripRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_trip_rules(self) -> Self:
-        """在字段校验完成后，检查多个字段之间的业务关系。"""
+        """校验跨字段规则，并为错误附加原因标识和字段信息。"""
 
-        # 此时 start_date 和 end_date 已经是 date 对象。
-        # 日期倒置时，计算函数会抛出 ValueError。
+        # mode="after" 表示各字段已完成基本校验。
+        # 此时 start_date 和 end_date 已经是 Python 的 date 对象，
+        # 因此可以直接比较日期先后。
+        if self.end_date < self.start_date:
+            raise PydanticCustomError(
+                "date_order_invalid",
+                "结束日期不能早于开始日期",
+                {"field": "end_date"},
+            )
+
+        # 继续使用之前的日期计算函数，包含开始日和结束日。
         day_count = calculate_day_count(
             self.start_date,
             self.end_date,
         )
 
         if day_count > MAX_TRIP_DAYS:
-            raise ValueError(
-                f"旅行天数不能超过 {MAX_TRIP_DAYS} 天"
+            raise PydanticCustomError(
+                "trip_too_long",
+                f"旅行天数不能超过 {MAX_TRIP_DAYS} 天",
+                {"field": "end_date"},
             )
 
-        # 初版按出行人员使用的房间进行预算估算。
-        # 在该产品规则下，房间数不得超过出行人数。
         if self.room_count > self.travelers:
-            raise ValueError("房间数不能超过出行人数")
+            raise PydanticCustomError(
+                "room_count_exceeds_travelers",
+                "房间数不能超过出行人数",
+                {"field": "room_count"},
+            )
 
-        # after 模型校验器必须返回通过校验的模型对象。
+        # 校验通过后，返回当前模型实例。
         return self
 
     @property

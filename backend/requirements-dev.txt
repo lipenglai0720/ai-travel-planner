@@ -1,0 +1,8 @@
+# 同时安装项目已有的运行依赖。
+-r requirements.txt
+
+# 自动化测试框架。
+pytest==8.4.2
+
+# FastAPI TestClient 使用的 HTTP 客户端依赖。
+httpx==0.28.1

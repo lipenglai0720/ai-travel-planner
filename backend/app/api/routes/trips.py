@@ -1,17 +1,16 @@
-"""旅行 API 路由：接收请求、调用业务服务并包装响应。"""
+"""旅行规划相关的 API 路由。"""
 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
 from app.models.common import ResponseMeta
+from app.models.errors import ErrorResponse
 from app.models.requests import TripRequest
 from app.models.trip import TripPreviewResponse
 from app.services.trip_service import TripService
 
 
-# 当前模块中的接口统一使用 /trips 前缀。
-# tags 用于在 /docs 中将接口分组。
 router = APIRouter(
     prefix="/trips",
     tags=["旅行规划"],
@@ -19,10 +18,7 @@ router = APIRouter(
 
 
 def get_trip_service() -> TripService:
-    """为路由提供业务服务对象。"""
-
-    # 依赖函数负责构造对象。
-    # 具体的业务处理由路由调用服务方法执行。
+    """创建本次接口调用使用的旅行服务。"""
     return TripService()
 
 
@@ -31,13 +27,22 @@ def get_trip_service() -> TripService:
     response_model=TripPreviewResponse,
     status_code=200,
     summary="预览旅行需求",
-    description="校验旅行输入并返回日期、人数和预算摘要。",
+    description="校验旅行输入，返回日期、人数、房间数和预算摘要。",
+    responses={
+        422: {
+            "model": ErrorResponse,
+            "description": "请求参数校验失败，返回统一错误结构。",
+        }
+    },
 )
 def preview_trip(
     trip_request: TripRequest,
-    service: Annotated[TripService, Depends(get_trip_service)],
+    service: Annotated[
+        TripService,
+        Depends(get_trip_service),
+    ],
 ) -> TripPreviewResponse:
-    """接收旅行请求，返回结构明确的需求预览响应。"""
+    """调用旅行服务生成经过校验的需求摘要。"""
 
     preview = service.preview(trip_request)
 
