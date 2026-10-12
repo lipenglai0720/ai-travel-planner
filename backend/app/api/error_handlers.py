@@ -6,7 +6,7 @@ from app.clients.amap import AmapError
 from app.llm.client import LLMConfigurationError
 from app.models.errors import ApiError, ErrorResponse
 from app.services.trip_generation_service import TripGenerationError
-
+from app.services.weather_service import WeatherServiceError
 
 # 接口对外提供固定的错误说明。
 # 不直接把异常文本、模型原始输出或上游响应放进 HTTP 响应。
@@ -99,6 +99,71 @@ def amap_error_handler(
             code=exc.code,
             # HTTP 响应使用固定说明。
             # 不直接返回原始异常文本或高德请求 URL。
+            message=message,
+        )
+    )
+
+    return JSONResponse(
+        status_code=status_code,
+        content=response.model_dump(mode="json"),
+    )
+
+
+# 这些映射是本项目天气接口的错误契约。
+# 已有 POI 和旅行生成异常仍由各自处理器处理。
+WEATHER_ERROR_RESPONSES: dict[str, tuple[int, str]] = {
+    "district_not_found": (
+        404,
+        "没有找到符合规则的地区，请检查城市或区县名称。",
+    ),
+    "district_ambiguous": (
+        422,
+        "地区名称存在多个匹配，请补充省级编码或明确的 adcode。",
+    ),
+    "district_query_too_broad": (
+        422,
+        "地区查询范围过大，请提供更明确的名称或省级编码。",
+    ),
+    "district_level_unsupported": (
+        422,
+        "当前支持城市、区县和直辖市，请提供更具体的地区。",
+    ),
+    "weather_not_available": (
+        503,
+        "该地区实况天气本次暂不可用，请稍后重试。",
+    ),
+    "amap_not_configured": (
+        503,
+        "天气查询服务尚未正确配置，请检查服务端配置。",
+    ),
+    "amap_configuration_invalid": (
+        503,
+        "天气查询服务尚未正确配置，请检查服务端配置。",
+    ),
+    "amap_timeout": (
+        504,
+        "天气查询超时，请稍后重试。",
+    ),
+}
+
+
+def weather_error_handler(
+    request: Request,
+    exc: WeatherServiceError,
+) -> JSONResponse:
+    """将天气服务异常转换为统一 HTTP 错误响应。"""
+
+    status_code, message = WEATHER_ERROR_RESPONSES.get(
+        exc.code,
+        (
+            502,
+            "天气上游服务未能返回可用数据，请稍后重试。",
+        ),
+    )
+
+    response = ErrorResponse(
+        error=ApiError(
+            code=exc.code,
             message=message,
         )
     )

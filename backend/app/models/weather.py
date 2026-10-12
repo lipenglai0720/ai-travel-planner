@@ -11,8 +11,10 @@ from pydantic import (
     NaiveDatetime,
 )
 
-from app.models.district import ADCODE_PATTERN
-
+from app.models.district import (
+    ADCODE_PATTERN,
+    PROVINCE_ADCODE_PATTERN,
+)
 
 def utc_now() -> datetime:
     """返回带 UTC 时区的当前时间。"""
@@ -115,3 +117,25 @@ class CurrentWeather(BaseModel):
     data_kind: Literal[
         "current_conditions"
     ] = "current_conditions"
+
+
+class WeatherLookupQuery(BaseModel):
+    """按城市或区县查询天气的业务输入。"""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        str_strip_whitespace=True,
+    )
+
+    city: str = Field(
+        min_length=1,
+        max_length=50,
+        description="城市、区县名称，也可以填写六位 adcode。",
+    )
+
+    province_adcode: str | None = Field(
+        default=None,
+        pattern=PROVINCE_ADCODE_PATTERN,
+        description="可选的省或直辖市编码，用于缩小行政区查询范围。",
+    )
