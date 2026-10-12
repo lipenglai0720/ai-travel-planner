@@ -2,7 +2,7 @@
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-
+from app.clients.amap import AmapError
 from app.llm.client import LLMConfigurationError
 from app.models.errors import ApiError, ErrorResponse
 from app.services.trip_generation_service import TripGenerationError
@@ -62,6 +62,43 @@ def trip_generation_error_handler(
             # 保留服务层提供的稳定错误标识。
             # 前端可以根据 code 区分超时、输出不合格等情况。
             code=exc.code,
+            message=message,
+        )
+    )
+
+    return JSONResponse(
+        status_code=status_code,
+        content=response.model_dump(mode="json"),
+    )
+
+
+def amap_error_handler(
+    request: Request,
+    exc: AmapError,
+) -> JSONResponse:
+    """将高德客户端异常转换为统一 HTTP 错误响应。"""
+
+    if exc.code in (
+        "amap_not_configured",
+        "amap_configuration_invalid",
+    ):
+        status_code = 503
+        message = "地点查询服务尚未正确配置，请检查服务端配置。"
+
+    elif exc.code == "amap_timeout":
+        status_code = 504
+        message = "地点查询超时，请稍后重试。"
+
+    else:
+        status_code = 502
+        message = "高德服务未能返回可用的地点数据，请稍后重试。"
+
+    response = ErrorResponse(
+        error=ApiError(
+            # 保留客户端提供的稳定项目错误标识。
+            code=exc.code,
+            # HTTP 响应使用固定说明。
+            # 不直接返回原始异常文本或高德请求 URL。
             message=message,
         )
     )

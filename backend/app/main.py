@@ -4,11 +4,14 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
 from app.api.error_handlers import (
+    amap_error_handler,
     llm_configuration_error_handler,
     trip_generation_error_handler,
 )
 from app.api.routes.health import router as health_router
+from app.api.routes.pois import router as pois_router
 from app.api.routes.trips import router as trips_router
+from app.clients.amap import AmapError
 from app.core.config import Settings
 from app.core.errors import request_validation_error_handler
 from app.llm.client import LLMConfigurationError
@@ -23,27 +26,38 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# 请求输入校验失败时，返回已有的统一 422 响应。
+# 请求输入校验失败时，返回统一的 422 响应。
 app.add_exception_handler(
     RequestValidationError,
     request_validation_error_handler,
 )
 
-# 模型 Key 尚未配置时，返回统一的 503 响应。
-# 该异常可能发生在生成服务依赖的初始化过程中。
+# 大模型配置缺失。
 app.add_exception_handler(
     LLMConfigurationError,
     llm_configuration_error_handler,
 )
 
-# 已识别的生成异常，统一转换为 502 或 504 响应。
+# 已识别的旅行生成异常。
 app.add_exception_handler(
     TripGenerationError,
     trip_generation_error_handler,
 )
 
+# 已识别的高德客户端异常。
+app.add_exception_handler(
+    AmapError,
+    amap_error_handler,
+)
+
 app.include_router(health_router)
+
 app.include_router(
     trips_router,
+    prefix="/api/v1",
+)
+
+app.include_router(
+    pois_router,
     prefix="/api/v1",
 )
