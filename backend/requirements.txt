@@ -14,3 +14,6 @@ openai==2.49.0
 langchain-core==1.6.9
 langchain-openai==1.7.0
 langchain-deepseek==1.1.1
+
+# 向高德等外部服务发送 HTTP 请求。
+httpx==0.28.1
