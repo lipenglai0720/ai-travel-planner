@@ -15,10 +15,16 @@ from app.models.poi import (
     PoiSearchQuery,
     PoiSearchResult,
 )
+from datetime import datetime
 
+from app.models.weather import (
+    CurrentWeather,
+    WeatherQuery,
+)
 
 AMAP_SEARCH_URL = "https://restapi.amap.com/v3/place/text"
 AMAP_DISTRICT_URL = "https://restapi.amap.com/v3/config/district"
+AMAP_WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo"
 
 DISTRICT_PAGE_SIZE = 20
 
@@ -100,7 +106,102 @@ def _parse_district(raw: object) -> DistrictInfo:
         level=raw.get("level"),
     )
 
+def _optional_weather_number(raw: object) -> float | None:
+    """将可选数值转换为 float，明确区分缺失和损坏。
 
+    项目约定：
+        None、空字符串、纯空白字符串、空数组视为缺失。
+
+        数字字符串和 JSON 数字允许显式转换。
+
+        布尔值、非空数组、对象等类型不接受。
+    """
+
+    if raw is None or raw == []:
+        return None
+
+    # bool 需要先排除，避免 True 被转换成 1.0。
+    if isinstance(raw, bool):
+        raise ValueError("天气数值不能是布尔值。")
+
+    if isinstance(raw, (int, float)):
+        return float(raw)
+
+    if isinstance(raw, str):
+        value = raw.strip()
+
+        if not value:
+            return None
+
+        return float(value)
+
+    raise ValueError("天气数值类型不符合要求。")
+
+
+def _optional_weather_text(raw: object) -> str | None:
+    """规范化可选的风向、风力描述。"""
+
+    if raw is None or raw == []:
+        return None
+
+    if not isinstance(raw, str):
+        raise ValueError("天气描述应为字符串。")
+
+    return raw.strip() or None
+
+
+def _parse_weather_report_time(raw: object) -> datetime:
+    """校验并解析供应商的发布时间，不补充未经确认的时区。"""
+
+    if not isinstance(raw, str):
+        raise ValueError("天气发布时间应为字符串。")
+
+    value = raw.strip()
+    time_format = "%Y-%m-%d %H:%M:%S"
+
+    # strptime 同时检查日期是否存在。
+    # 例如 2026-02-30 会抛出 ValueError。
+    parsed = datetime.strptime(
+        value,
+        time_format,
+    )
+
+    # 限定为当前适配器接受的标准格式。
+    if parsed.strftime(time_format) != value:
+        raise ValueError("天气发布时间格式不符合要求。")
+
+    return parsed
+
+
+def _parse_current_weather(raw: object) -> CurrentWeather:
+    """将一条高德实况天气记录转换为业务模型。"""
+
+    if not isinstance(raw, dict):
+        raise ValueError("实况天气记录应为对象。")
+
+    # 显式挑选和转换字段。
+    # 外部服务新增的其他字段不会直接进入业务模型。
+    return CurrentWeather(
+        province=raw.get("province"),
+        city=raw.get("city"),
+        adcode=raw.get("adcode"),
+        weather=raw.get("weather"),
+        temperature_c=_optional_weather_number(
+            raw.get("temperature")
+        ),
+        humidity_percent=_optional_weather_number(
+            raw.get("humidity")
+        ),
+        wind_direction=_optional_weather_text(
+            raw.get("winddirection")
+        ),
+        wind_power=_optional_weather_text(
+            raw.get("windpower")
+        ),
+        reported_at=_parse_weather_report_time(
+            raw.get("reporttime")
+        ),
+    )
 class AmapClient:
     """管理高德 HTTP 调用和返回数据转换。"""
 
@@ -437,3 +538,77 @@ class AmapClient:
             province_adcode=query.province_adcode,
             region=region,
         )
+    def get_current_weather(
+        self,
+        query: WeatherQuery,
+    ) -> CurrentWeather:
+        """查询指定 adcode 的实况天气。
+
+        参数：
+            query：
+                已通过 WeatherQuery 校验的地区编码。
+
+        返回值：
+            CurrentWeather：
+                包含天气字段、供应商发布时间和查询时间。
+
+        异常：
+            AmapError：
+                请求失败、没有天气记录、数据不合格，
+                或返回的地区编码与请求不一致。
+        """
+
+        params = {
+            "key": self._api_key,
+            "city": query.adcode,
+            "extensions": "base",
+            "output": "JSON",
+        }
+
+        # 沿用上一节的 HTTP、JSON 和高德业务状态检查。
+        payload = self._request_json(
+            AMAP_WEATHER_URL,
+            params,
+        )
+
+        raw_lives = payload.get("lives")
+
+        if not isinstance(raw_lives, list):
+            raise AmapError(
+                code="amap_response_invalid",
+                message="高德 lives 字段应为列表。",
+            )
+
+        if not raw_lives:
+            raise AmapError(
+                code="weather_not_available",
+                message="高德本次没有返回该地区的实况天气。",
+            )
+
+        # 当前接口按一个 adcode 查询一条实况记录。
+        # 对意外的多个结果明确报错，避免任意选择。
+        if len(raw_lives) != 1:
+            raise AmapError(
+                code="amap_weather_invalid",
+                message="高德返回了数量不符合预期的实况天气记录。",
+            )
+
+        try:
+            result = _parse_current_weather(
+                raw_lives[0]
+            )
+        except (ValueError, OverflowError):
+            # 包括数值转换、日期解析和 Pydantic 校验失败。
+            # 不把包含原始数据的异常直接交给调用方。
+            raise AmapError(
+                code="amap_weather_invalid",
+                message="高德实况天气字段或发布时间不符合要求。",
+            ) from None
+
+        if result.adcode != query.adcode:
+            raise AmapError(
+                code="amap_weather_region_mismatch",
+                message="高德返回的天气地区编码与请求不一致。",
+            )
+
+        return result
