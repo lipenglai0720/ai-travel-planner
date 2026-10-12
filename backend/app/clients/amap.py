@@ -1,8 +1,15 @@
-"""调用高德 POI 搜索，并转换为项目业务模型。"""
+"""调用高德服务，并转换为项目业务模型。"""
+
+from typing import Any
 
 import httpx
 from pydantic import SecretStr
 
+from app.models.district import (
+    DistrictInfo,
+    DistrictQuery,
+    DistrictResult,
+)
 from app.models.poi import (
     Poi,
     PoiSearchQuery,
@@ -11,6 +18,19 @@ from app.models.poi import (
 
 
 AMAP_SEARCH_URL = "https://restapi.amap.com/v3/place/text"
+AMAP_DISTRICT_URL = "https://restapi.amap.com/v3/config/district"
+
+DISTRICT_PAGE_SIZE = 20
+
+# 高德把直辖市放在 province 级别。
+# 这里的名称集合用于判断支持的行政级别。
+# 实际 adcode 始终读取高德响应，不从这里生成。
+MUNICIPALITY_NAMES = {
+    "北京市",
+    "天津市",
+    "上海市",
+    "重庆市",
+}
 
 
 class AmapError(RuntimeError):
@@ -23,7 +43,6 @@ class AmapError(RuntimeError):
         provider_code: str | None = None,
     ) -> None:
         """保存项目错误标识及可选的高德错误码。"""
-
         super().__init__(message)
         self.code = code
         self.provider_code = provider_code
@@ -46,14 +65,11 @@ def _parse_poi(raw: object) -> Poi:
         raise ValueError("坐标应包含经度和纬度。")
 
     # 高德坐标顺序为：经度在前，纬度在后。
-    # float() 负责显式转换字符串。
-    # 无法解析时抛出 ValueError。
     longitude = float(parts[0].strip())
     latitude = float(parts[1].strip())
 
     raw_address = raw.get("address")
 
-    # 对已知的缺失形式进行明确转换。
     if raw_address is None or raw_address == []:
         address = None
     elif isinstance(raw_address, str):
@@ -61,17 +77,27 @@ def _parse_poi(raw: object) -> Poi:
     else:
         raise ValueError("地址类型不符合预期。")
 
-    # 这里只挑选项目需要的字段。
-    # 高德额外返回的其他字段不会直接进入业务模型。
-    #
-    # Poi 继续校验：
-    # 必填字段、字符串长度、坐标范围和数值有限性。
     return Poi(
         poi_id=raw.get("id"),
         name=raw.get("name"),
         address=address,
         longitude=longitude,
         latitude=latitude,
+    )
+
+
+def _parse_district(raw: object) -> DistrictInfo:
+    """从一条原始行政区记录中挑选并校验必要字段。"""
+
+    if not isinstance(raw, dict):
+        raise ValueError("行政区记录应为对象。")
+
+    # 不把外部服务的全部字段直接传入业务模型。
+    # citycode、center、子级 districts 等字段当前无需使用。
+    return DistrictInfo(
+        name=raw.get("name"),
+        adcode=raw.get("adcode"),
+        level=raw.get("level"),
     )
 
 
@@ -84,18 +110,18 @@ class AmapClient:
         timeout_seconds: float = 10.0,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
-        """创建客户端，但暂不发送高德请求。
+        """创建客户端，但暂不发送请求。
 
         参数：
-            api_key:
+            api_key：
                 高德 Web 服务 Key，通常来自 Settings。
 
-            timeout_seconds:
+            timeout_seconds：
                 传给 HTTPX 的超时参数。
 
-            transport:
-                正常调用时使用默认传输。
-                测试时可以注入 MockTransport。
+            transport：
+                正常调用使用默认传输。
+                测试可以注入 MockTransport。
         """
 
         key_value = (
@@ -128,39 +154,20 @@ class AmapClient:
         """关闭本客户端管理的 HTTP 连接资源。"""
         self._http_client.close()
 
-    def search_pois(
+    def _request_json(
         self,
-        query: PoiSearchQuery,
-    ) -> PoiSearchResult:
-        """搜索候选地点，返回经过校验的业务结果。
+        url: str,
+        params: dict[str, str | int],
+    ) -> dict[str, Any]:
+        """发送 GET 请求，完成两个接口共有的基础检查。
 
-        参数：
-            query:
-                已经通过 PoiSearchQuery 校验的搜索条件。
-
-        返回值：
-            PoiSearchResult:
-                包含来源、查询时间和规范化 POI 列表。
-
-        异常：
-            AmapError:
-                请求失败、业务失败或返回数据不合格。
+        返回值仍是外部 JSON 字典。
+        POI 或行政区的具体字段由各自方法继续校验。
         """
-
-        params = {
-            "key": self._api_key,
-            "city": query.city,
-            "keywords": query.keyword,
-            "citylimit": "true",
-            "offset": 5,
-            "page": 1,
-            "extensions": "base",
-            "output": "JSON",
-        }
 
         try:
             response = self._http_client.get(
-                AMAP_SEARCH_URL,
+                url,
                 params=params,
             )
             response.raise_for_status()
@@ -172,8 +179,7 @@ class AmapClient:
             ) from None
 
         except httpx.HTTPStatusError as exc:
-            # 不使用完整 HTTP 异常文本，
-            # 避免把包含 Key 的请求 URL 带到调用方。
+            # 不输出完整 HTTP 异常，避免暴露含 Key 的 URL。
             raise AmapError(
                 code="amap_http_error",
                 message=(
@@ -204,6 +210,7 @@ class AmapClient:
 
         status = payload.get("status")
 
+        # HTTP 200 不代表高德业务一定成功。
         if status == "0":
             raw_code = payload.get("infocode")
 
@@ -229,6 +236,30 @@ class AmapClient:
                 message="高德业务状态字段不符合预期。",
             )
 
+        return payload
+
+    def search_pois(
+        self,
+        query: PoiSearchQuery,
+    ) -> PoiSearchResult:
+        """搜索候选地点，返回经过校验的业务结果。"""
+
+        params = {
+            "key": self._api_key,
+            "city": query.city,
+            "keywords": query.keyword,
+            "citylimit": "true",
+            "offset": 5,
+            "page": 1,
+            "extensions": "base",
+            "output": "JSON",
+        }
+
+        payload = self._request_json(
+            AMAP_SEARCH_URL,
+            params,
+        )
+
         raw_pois = payload.get("pois")
 
         if not isinstance(raw_pois, list):
@@ -243,11 +274,8 @@ class AmapClient:
             try:
                 pois.append(_parse_poi(raw_poi))
             except ValueError:
-                # Pydantic 的 ValidationError 也属于 ValueError。
-                # 这里统一转换为客户端自己的异常。
-                #
-                # 任意一条记录失败，本次查询都明确报错。
-                # 不返回已经解析的部分结果。
+                # Pydantic ValidationError 也属于 ValueError。
+                # 任意一条记录失败，整次查询明确报错。
                 raise AmapError(
                     code="amap_poi_invalid",
                     message=(
@@ -259,4 +287,153 @@ class AmapClient:
             city=query.city,
             keyword=query.keyword,
             pois=pois,
+        )
+
+    def resolve_district(
+        self,
+        query: DistrictQuery,
+    ) -> DistrictResult:
+        """把名称或 adcode 解析成一个明确的行政区。
+
+        参数：
+            query：
+                已通过 DistrictQuery 校验的查询条件。
+
+        返回值：
+            DistrictResult：
+                包含匹配记录、数据来源和查询时间。
+
+        异常：
+            AmapError：
+                请求失败、字段不合格、匹配不明确，
+                或行政级别不在当前支持范围内。
+        """
+
+        params: dict[str, str | int] = {
+            "key": self._api_key,
+            "keywords": query.keyword,
+            "subdistrict": 0,
+            "extensions": "base",
+            "output": "JSON",
+            "offset": DISTRICT_PAGE_SIZE,
+            "page": 1,
+        }
+
+        if query.province_adcode is not None:
+            params["filter"] = query.province_adcode
+
+        payload = self._request_json(
+            AMAP_DISTRICT_URL,
+            params,
+        )
+
+        raw_districts = payload.get("districts")
+
+        if not isinstance(raw_districts, list):
+            raise AmapError(
+                code="amap_response_invalid",
+                message="高德 districts 字段应为列表。",
+            )
+
+        # 高德最外层单页最多返回 20 条。
+        # 本步采用保守策略：满页时要求缩小范围，
+        # 避免遗漏后续页中的同名候选。
+        if len(raw_districts) >= DISTRICT_PAGE_SIZE:
+            raise AmapError(
+                code="district_query_too_broad",
+                message=(
+                    "候选达到单页上限，无法确认唯一结果；"
+                    "请补充省级编码或明确的六位 adcode。"
+                ),
+            )
+
+        districts: list[DistrictInfo] = []
+
+        for index, raw_district in enumerate(
+            raw_districts,
+            start=1,
+        ):
+            try:
+                districts.append(
+                    _parse_district(raw_district)
+                )
+            except ValueError:
+                raise AmapError(
+                    code="amap_district_invalid",
+                    message=(
+                        f"第 {index} 条行政区记录的字段不符合要求。"
+                    ),
+                ) from None
+
+        matches: list[DistrictInfo] = []
+
+        for district in districts:
+            exact_match = (
+                query.keyword == district.name
+                or query.keyword == district.adcode
+            )
+
+            # 只允许市级名称省略末尾的“市”。
+            # 不随意删除“区”“县”，也不做包含匹配。
+            city_alias_match = (
+                district.level in {"city", "province"}
+                and district.name.endswith("市")
+                and query.keyword == district.name.removesuffix("市")
+            )
+
+            if exact_match or city_alias_match:
+                matches.append(district)
+
+        if not matches:
+            raise AmapError(
+                code="district_not_found",
+                message=(
+                    "没有找到符合匹配规则的行政区；"
+                    "请使用完整名称或明确的六位 adcode。"
+                ),
+            )
+
+        if len(matches) > 1:
+            raise AmapError(
+                code="district_ambiguous",
+                message=(
+                    "查询匹配到多个行政区；"
+                    "请补充省级编码，或改用明确的六位 adcode。"
+                ),
+            )
+
+        region = matches[0]
+
+        # 对调用方指定的省级范围，再做一次基本一致性检查。
+        # 这里只检查编码前两位，不推测或改写外部返回的编码。
+        if (
+            query.province_adcode is not None
+            and region.adcode[:2] != query.province_adcode[:2]
+        ):
+            raise AmapError(
+                code="amap_district_invalid",
+                message="高德返回的行政区编码与指定省级范围不一致。",
+            )
+
+        supported_level = (
+            region.level in {"city", "district"}
+            or (
+                region.level == "province"
+                and region.name in MUNICIPALITY_NAMES
+            )
+        )
+
+        if not supported_level:
+            raise AmapError(
+                code="district_level_unsupported",
+                message=(
+                    "当前只支持市、区县和直辖市；"
+                    "请提供更明确的旅行目的地。"
+                ),
+            )
+
+        return DistrictResult(
+            keyword=query.keyword,
+            province_adcode=query.province_adcode,
+            region=region,
         )
