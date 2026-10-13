@@ -15,13 +15,16 @@ from app.models.poi import (
     PoiSearchQuery,
     PoiSearchResult,
 )
-from datetime import datetime
+from datetime import date, datetime
 
 from app.models.weather import (
     CurrentWeather,
     WeatherQuery,
 )
-
+from app.models.weather_forecast import (
+    ForecastDay,
+    WeatherForecast,
+)
 AMAP_SEARCH_URL = "https://restapi.amap.com/v3/place/text"
 AMAP_DISTRICT_URL = "https://restapi.amap.com/v3/config/district"
 AMAP_WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo"
@@ -200,6 +203,55 @@ def _parse_current_weather(raw: object) -> CurrentWeather:
         ),
         reported_at=_parse_weather_report_time(
             raw.get("reporttime")
+        ),
+    )
+
+def _parse_forecast_date(raw: object) -> date:
+    """把供应商日期转换成 date，并限定标准日期格式。"""
+
+    if not isinstance(raw, str):
+        raise ValueError("预报日期应为字符串。")
+
+    value = raw.strip()
+    parsed = date.fromisoformat(value)
+
+    # 当前适配器接受 YYYY-MM-DD。
+    # 通过转换回字符串，排除紧凑日期等其他形式。
+    if parsed.isoformat() != value:
+        raise ValueError("预报日期格式应为 YYYY-MM-DD。")
+
+    return parsed
+
+
+def _parse_forecast_day(raw: object) -> ForecastDay:
+    """转换并校验一条逐日预报记录。"""
+
+    if not isinstance(raw, dict):
+        raise ValueError("逐日预报记录应为对象。")
+
+    return ForecastDay(
+        forecast_date=_parse_forecast_date(
+            raw.get("date")
+        ),
+        day_weather=raw.get("dayweather"),
+        night_weather=raw.get("nightweather"),
+        day_temperature_c=_optional_weather_number(
+            raw.get("daytemp")
+        ),
+        night_temperature_c=_optional_weather_number(
+            raw.get("nighttemp")
+        ),
+        day_wind_direction=_optional_weather_text(
+            raw.get("daywind")
+        ),
+        night_wind_direction=_optional_weather_text(
+            raw.get("nightwind")
+        ),
+        day_wind_power=_optional_weather_text(
+            raw.get("daypower")
+        ),
+        night_wind_power=_optional_weather_text(
+            raw.get("nightpower")
         ),
     )
 class AmapClient:
@@ -609,6 +661,115 @@ class AmapClient:
             raise AmapError(
                 code="amap_weather_region_mismatch",
                 message="高德返回的天气地区编码与请求不一致。",
+            )
+
+        return result
+    def get_forecast(
+        self,
+        query: WeatherQuery,
+    ) -> WeatherForecast:
+        """查询指定 adcode 的短期天气预报。
+
+        参数：
+            query：
+                已经过校验的地区编码。
+
+        返回值：
+            WeatherForecast：
+                包含实际逐日记录、发布时间和查询时间。
+
+        异常：
+            AmapError：
+                请求失败、没有预报、字段不合格、
+                日期重复或地区编码不一致。
+        """
+
+        params = {
+            "key": self._api_key,
+            "city": query.adcode,
+            "extensions": "all",
+            "output": "JSON",
+        }
+
+        payload = self._request_json(
+            AMAP_WEATHER_URL,
+            params,
+        )
+
+        raw_forecasts = payload.get("forecasts")
+
+        if not isinstance(raw_forecasts, list):
+            raise AmapError(
+                code="amap_response_invalid",
+                message="高德 forecasts 字段应为列表。",
+            )
+
+        if not raw_forecasts:
+            raise AmapError(
+                code="forecast_not_available",
+                message="高德本次没有返回该地区的天气预报。",
+            )
+
+        if len(raw_forecasts) != 1:
+            raise AmapError(
+                code="amap_forecast_invalid",
+                message="高德返回了数量不符合预期的地区预报记录。",
+            )
+
+        raw_forecast = raw_forecasts[0]
+
+        if not isinstance(raw_forecast, dict):
+            raise AmapError(
+                code="amap_forecast_invalid",
+                message="高德地区预报记录应为对象。",
+            )
+
+        raw_casts = raw_forecast.get("casts")
+
+        if not isinstance(raw_casts, list):
+            raise AmapError(
+                code="amap_forecast_invalid",
+                message="高德 casts 字段应为列表。",
+            )
+
+        if not raw_casts:
+            raise AmapError(
+                code="forecast_not_available",
+                message="高德本次没有返回可用的逐日预报。",
+            )
+
+        try:
+            days = [
+                _parse_forecast_day(raw_day)
+                for raw_day in raw_casts
+            ]
+
+            # 规范化顺序后，再交给集合模型检查重复日期等规则。
+            days = sorted(
+                days,
+                key=lambda item: item.forecast_date,
+            )
+
+            result = WeatherForecast(
+                province=raw_forecast.get("province"),
+                city=raw_forecast.get("city"),
+                adcode=raw_forecast.get("adcode"),
+                reported_at=_parse_weather_report_time(
+                    raw_forecast.get("reporttime")
+                ),
+                days=days,
+            )
+
+        except (ValueError, OverflowError):
+            raise AmapError(
+                code="amap_forecast_invalid",
+                message="高德预报字段、日期集合或发布时间不符合要求。",
+            ) from None
+
+        if result.adcode != query.adcode:
+            raise AmapError(
+                code="amap_forecast_region_mismatch",
+                message="高德返回的预报地区编码与请求不一致。",
             )
 
         return result
