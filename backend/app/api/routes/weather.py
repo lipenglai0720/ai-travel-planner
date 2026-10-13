@@ -8,9 +8,12 @@ from app.core.config import Settings
 from app.models.common import ResponseMeta
 from app.models.errors import ErrorResponse
 from app.models.weather import WeatherLookupQuery
-from app.models.weather_response import WeatherCurrentResponse
+from app.models.weather_response import (
+    WeatherCurrentResponse,
+    WeatherForecastResponse,
+)
 from app.services.weather_service import WeatherService
-
+from app.models.forecast_lookup import ForecastLookupQuery
 
 router = APIRouter(
     prefix="/weather",
@@ -100,6 +103,96 @@ def get_current_weather(
         )
 
     return WeatherCurrentResponse(
+        data=result,
+        meta=ResponseMeta(
+            warnings=warnings,
+        ),
+    )
+
+@router.get(
+    "/forecast",
+    response_model=WeatherForecastResponse,
+    status_code=200,
+    summary="查询短期天气预报",
+    description=(
+        "查询实际可用的逐日预报，可选检查一个目标日期。"
+        "合法日期没有记录时返回 200，并标记 unavailable。"
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "没有找到符合规则的地区。",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "输入不合法，或地区条件不明确。",
+        },
+        502: {
+            "model": ErrorResponse,
+            "description": "高德调用失败，或预报数据不合格。",
+        },
+        503: {
+            "model": ErrorResponse,
+            "description": "服务配置不正确，或预报暂不可用。",
+        },
+        504: {
+            "model": ErrorResponse,
+            "description": "高德请求超时。",
+        },
+    },
+)
+def get_forecast(
+    query: Annotated[
+        ForecastLookupQuery,
+        Query(),
+    ],
+    service: Annotated[
+        WeatherService,
+        Depends(get_weather_service),
+    ],
+) -> WeatherForecastResponse:
+    """调用预报服务，并包装统一成功响应。"""
+
+    result = service.get_forecast(query)
+
+    warnings = [
+        "这些数据属于供应商天气预报，实际天气可能变化。",
+        "供应商发布时间未提供时区，本次未计算预报数据年龄。",
+    ]
+
+    if (
+        result.coverage_status == "unavailable"
+        and result.target_date is not None
+    ):
+        warnings.append(
+            "当前返回的短期预报中没有 "
+            f"{result.target_date.isoformat()} 的记录。"
+        )
+
+    # 对完整预报中的缺失字段提供日期明确的提醒。
+    for day in result.forecast.days:
+        missing_fields: list[str] = []
+
+        for attribute, label in [
+            ("day_temperature_c", "白天温度"),
+            ("night_temperature_c", "夜间温度"),
+            ("day_wind_direction", "白天风向"),
+            ("night_wind_direction", "夜间风向"),
+            ("day_wind_power", "白天风力"),
+            ("night_wind_power", "夜间风力"),
+        ]:
+            if getattr(day, attribute) is None:
+                missing_fields.append(label)
+
+        if missing_fields:
+            warnings.append(
+                f"{day.forecast_date.isoformat()} "
+                "的以下预报字段暂缺："
+                + "、".join(missing_fields)
+                + "。"
+            )
+
+    return WeatherForecastResponse(
         data=result,
         meta=ResponseMeta(
             warnings=warnings,

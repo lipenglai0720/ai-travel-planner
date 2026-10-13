@@ -144,6 +144,10 @@ WEATHER_ERROR_RESPONSES: dict[str, tuple[int, str]] = {
         504,
         "天气查询超时，请稍后重试。",
     ),
+    "forecast_not_available": (
+        503,
+        "该地区短期天气预报本次暂不可用，请稍后重试。",
+    ),
 }
 
 

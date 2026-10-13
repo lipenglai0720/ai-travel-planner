@@ -9,7 +9,10 @@ from app.models.weather import (
     WeatherLookupQuery,
     WeatherQuery,
 )
-
+from app.models.forecast_lookup import (
+    ForecastLookupQuery,
+    ForecastLookupResult,
+)
 
 class WeatherServiceError(RuntimeError):
     """天气服务能够明确识别的业务失败。"""
@@ -88,6 +91,75 @@ class WeatherService:
         except AmapError as exc:
             # 转换成天气业务异常。
             # 不把高德原始异常文本带入 API 响应。
+            raise WeatherServiceError(
+                code=exc.code,
+            ) from None
+
+        finally:
+            if client is not None:
+                client.close()
+    def get_forecast(
+        self,
+        query: ForecastLookupQuery,
+    ) -> ForecastLookupResult:
+        """查询完整预报，并检查可选的目标日期。
+
+        参数：
+            query：
+                已校验的地区条件和目标日期。
+
+        返回值：
+            ForecastLookupResult：
+                包含完整预报、覆盖状态和选中记录。
+
+        异常：
+            WeatherServiceError：
+                由已识别的高德客户端异常转换而来。
+        """
+
+        client: AmapClient | None = None
+
+        try:
+            client = AmapClient(
+                api_key=self._api_key,
+                timeout_seconds=self._timeout_seconds,
+            )
+
+            district = client.resolve_district(
+                DistrictQuery(
+                    keyword=query.city,
+                    province_adcode=query.province_adcode,
+                )
+            )
+
+            forecast = client.get_forecast(
+                WeatherQuery(
+                    adcode=district.region.adcode,
+                )
+            )
+
+            if query.target_date is None:
+                selected_day = None
+                coverage_status = "not_requested"
+            else:
+                selected_day = forecast.find_day(
+                    query.target_date
+                )
+
+                coverage_status = (
+                    "available"
+                    if selected_day is not None
+                    else "unavailable"
+                )
+
+            return ForecastLookupResult(
+                forecast=forecast,
+                target_date=query.target_date,
+                coverage_status=coverage_status,
+                selected_day=selected_day,
+            )
+
+        except AmapError as exc:
             raise WeatherServiceError(
                 code=exc.code,
             ) from None
