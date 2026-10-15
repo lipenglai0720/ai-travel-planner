@@ -11,10 +11,11 @@ from app.models.weather import WeatherLookupQuery
 from app.models.weather_response import (
     WeatherCurrentResponse,
     WeatherForecastResponse,
+    WeatherForecastRangeResponse,
 )
 from app.services.weather_service import WeatherService
 from app.models.forecast_lookup import ForecastLookupQuery
-
+from app.models.forecast_range import ForecastRangeQuery
 router = APIRouter(
     prefix="/weather",
     tags=["天气查询"],
@@ -193,6 +194,88 @@ def get_forecast(
             )
 
     return WeatherForecastResponse(
+        data=result,
+        meta=ResponseMeta(
+            warnings=warnings,
+        ),
+    )
+
+
+@router.get(
+    "/forecast-range",
+    response_model=WeatherForecastRangeResponse,
+    status_code=200,
+    summary="查询旅行期间天气与出行建议",
+    description=(
+        "根据旅行起止日期检查实际预报覆盖情况，"
+        "返回每日天气记录与项目规则建议。"
+        "缺少部分或全部旅行日期的预报时，"
+        "仍返回 200，并明确标记缺失日期。"
+    ),
+    responses={
+        404: {
+            "model": ErrorResponse,
+            "description": "没有找到符合规则的地区。",
+        },
+        422: {
+            "model": ErrorResponse,
+            "description": "参数不合法，或地区条件不明确。",
+        },
+        502: {
+            "model": ErrorResponse,
+            "description": "高德调用失败，或预报数据不合格。",
+        },
+        503: {
+            "model": ErrorResponse,
+            "description": "服务配置不正确，或预报暂不可用。",
+        },
+        504: {
+            "model": ErrorResponse,
+            "description": "高德请求超时。",
+        },
+    },
+)
+def get_forecast_range(
+    query: Annotated[
+        ForecastRangeQuery,
+        Query(),
+    ],
+    service: Annotated[
+        WeatherService,
+        Depends(get_weather_service),
+    ],
+) -> WeatherForecastRangeResponse:
+    """查询区间天气，并包装统一成功响应。"""
+
+    result = service.get_forecast_range(query)
+
+    warnings = [
+        "这些数据属于供应商天气预报，实际天气可能变化。",
+        "供应商发布时间未提供时区，本次未计算预报数据年龄。",
+        "出行建议依据预报和项目规则生成，出发前请核对最新信息。",
+    ]
+
+    if result.coverage.missing_dates:
+        missing_dates_text = "、".join(
+            day.isoformat()
+            for day in result.coverage.missing_dates
+        )
+
+        warnings.append(
+            f"以下旅行日期暂无预报：{missing_dates_text}。"
+            "对应天气信息保留为空。"
+        )
+
+    for item in result.daily_weather:
+        if item.missing_fields:
+            warnings.append(
+                f"{item.travel_date.isoformat()} "
+                "的以下预报字段暂缺："
+                + "、".join(item.missing_fields)
+                + "。"
+            )
+
+    return WeatherForecastRangeResponse(
         data=result,
         meta=ResponseMeta(
             warnings=warnings,

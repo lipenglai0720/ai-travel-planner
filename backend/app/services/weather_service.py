@@ -13,7 +13,15 @@ from app.models.forecast_lookup import (
     ForecastLookupQuery,
     ForecastLookupResult,
 )
-
+from app.models.forecast_range import (
+    ForecastDateRange,
+    ForecastRangeQuery,
+    TripWeatherResult,
+)
+from app.services.forecast_coverage import (
+    assess_forecast_coverage,
+    build_trip_weather,
+)
 class WeatherServiceError(RuntimeError):
     """天气服务能够明确识别的业务失败。"""
 
@@ -167,3 +175,42 @@ class WeatherService:
         finally:
             if client is not None:
                 client.close()
+    def get_forecast_range(
+        self,
+        query: ForecastRangeQuery,
+    ) -> TripWeatherResult:
+        """查询旅行区间预报，并生成每日天气与建议。
+
+        参数：
+            query：地区查询条件及旅行起止日期。
+
+        返回：
+            TripWeatherResult：
+                日期覆盖结果、每日预报和项目规则建议。
+
+        异常：
+            WeatherServiceError：
+                由已有预报查询流程识别并转换的业务失败。
+        """
+
+        # 复用已有预报查询流程。
+        # 其中已经包含地区解析、超时处理、异常转换和客户端关闭。
+        lookup_result = self.get_forecast(
+            ForecastLookupQuery(
+                city=query.city,
+                province_adcode=query.province_adcode,
+            ),
+        )
+
+        # 单独提取旅行日期，作为覆盖评估的输入。
+        date_range = ForecastDateRange(
+            start_date=query.start_date,
+            end_date=query.end_date,
+        )
+
+        coverage = assess_forecast_coverage(
+            forecast=lookup_result.forecast,
+            date_range=date_range,
+        )
+
+        return build_trip_weather(coverage)
