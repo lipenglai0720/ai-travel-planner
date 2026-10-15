@@ -13,6 +13,8 @@
 | GET | /api/v1/weather/current | 解析地区并查询实况天气 |
 | GET | /api/v1/weather/forecast | 查询短期预报，检查可选目标日期的覆盖状态 |
 | GET | /api/v1/weather/forecast-range | 检查旅行日期区间的预报覆盖，生成每日天气与规则建议 |
+| POST | /api/v1/trips/plan | 整合旅行草案与每日天气，支持天气失败降级 |
+
 
 AI 草案中的活动建议与地图查询得到的可信地点记录分别管理。
 天气日期没有预报时保留缺失状态，不用模型生成的内容填充供应商数据。
