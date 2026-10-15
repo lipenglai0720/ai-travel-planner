@@ -13,8 +13,11 @@ from app.models.common import (
 )
 from app.models.trip import (
     TripGenerationResponse,
+    TripPlan,
     TripPlanRequest,
     TripPlanResponse,
+    TripPoiPlanRequest,
+    TripPoiPlanResponse,
     TripPreviewResponse,
     TripRequest,
 )
@@ -22,7 +25,8 @@ from app.services.trip_generation_service import TripGenerationService
 from app.services.trip_planning_service import TripPlanningService
 from app.services.trip_service import TripService
 from app.services.weather_service import WeatherService
-
+from app.services.poi_service import PoiService
+from app.services.trip_poi_service import TripPoiService
 
 router = APIRouter(
     prefix="/trips",
@@ -76,7 +80,54 @@ def get_trip_planning_service(
             timeout_seconds=settings.amap_timeout_seconds,
         ),
     )
+def get_trip_poi_service(
+    planning_service: Annotated[
+        TripPlanningService,
+        Depends(get_trip_planning_service),
+    ],
+) -> TripPoiService:
+    """组合规划服务与地点服务，复用已有的客户端清理流程。"""
 
+    settings = Settings()
+
+    return TripPoiService(
+        planning_service=planning_service,
+        poi_service=PoiService(
+            api_key=settings.amap_web_api_key,
+            timeout_seconds=settings.amap_timeout_seconds,
+        ),
+    )
+
+
+def _build_plan_warnings(plan: TripPlan) -> list[str]:
+    """由两个规划接口共用同一套活动与天气提醒。"""
+
+    warnings = [
+        "活动由 AI 生成，具体地点、营业信息、路线和费用尚待核实。"
+    ]
+
+    if plan.weather_status == "skipped":
+        warnings.append("本次按请求跳过天气查询。")
+
+    elif plan.weather_status == "failed":
+        warnings.append(
+            "天气查询暂不可用，已保留旅行安排，请在出发前重新确认天气。"
+        )
+
+    elif plan.weather_coverage is not None:
+        coverage = plan.weather_coverage
+
+        if coverage.coverage_status == "partial":
+            warnings.append(
+                f"有 {len(coverage.missing_dates)} 天暂无预报，"
+                "请在临近出行时重新查询。"
+            )
+        elif coverage.coverage_status == "none":
+            warnings.append(
+                "当前预报未覆盖旅行日期，请在临近出行时重新查询。"
+            )
+
+    return warnings
 
 @router.post(
     "/preview",
@@ -192,37 +243,56 @@ def plan_trip(
         Depends(get_trip_planning_service),
     ],
 ) -> TripPlanResponse:
-    """调用规划服务，并将可选能力的状态整理为响应提醒。"""
+    """调用规划服务，并包装统一响应。"""
 
     plan = service.create_plan(trip_request)
 
-    warnings = [
-        "活动由 AI 生成，具体地点、营业信息、路线和费用尚待核实。"
-    ]
-
-    if plan.weather_status == "skipped":
-        warnings.append("本次按请求跳过天气查询。")
-
-    elif plan.weather_status == "failed":
-        warnings.append(
-            "天气查询暂不可用，已保留旅行安排，请在出发前重新确认天气。"
-        )
-
-    elif plan.weather_coverage is not None:
-        coverage = plan.weather_coverage
-
-        if coverage.coverage_status == "partial":
-            warnings.append(
-                f"有 {len(coverage.missing_dates)} 天暂无预报，"
-                "请在临近出行时重新查询。"
-            )
-
-        elif coverage.coverage_status == "none":
-            warnings.append(
-                "当前预报未覆盖旅行日期，请在临近出行时重新查询。"
-            )
-
     return TripPlanResponse(
+        data=plan,
+        meta=ResponseMeta(warnings=_build_plan_warnings(plan)),
+    )
+
+
+@router.post(
+    "/plan-with-pois",
+    response_model=TripPoiPlanResponse,
+    status_code=200,
+    summary="生成带真实地点候选的旅行规划",
+    description=(
+        "生成旅行规划，解析真实行政区，按活动查询高德地点候选。"
+        "搜索结果待用户确认；已识别的地点查询失败保留原规划。"
+    ),
+    responses={
+        422: {"model": ErrorResponse, "description": "请求参数校验失败。"},
+        502: {"model": ErrorResponse, "description": "模型调用或草案校验失败。"},
+        503: {"model": ErrorResponse, "description": "模型服务尚未正确配置。"},
+        504: {"model": ErrorResponse, "description": "模型请求超时。"},
+    },
+)
+def plan_trip_with_pois(
+    trip_request: TripPoiPlanRequest,
+    service: Annotated[
+        TripPoiService,
+        Depends(get_trip_poi_service),
+    ],
+) -> TripPoiPlanResponse:
+    """返回每日活动与真实地点候选，并整理降级提醒。"""
+
+    plan = service.create_plan(trip_request)
+    warnings = _build_plan_warnings(plan)
+    warnings.append(
+        "地点为高德搜索候选，请确认具体地点、营业信息后再安排路线。"
+    )
+
+    for status, message in [
+        ("empty", "部分活动没有搜索到地点候选，可调整关键词后重新查询。"),
+        ("failed", "部分地点查询失败，已保留活动安排。"),
+        ("skipped", "部分新关键词因查询上限或上游失败而跳过。"),
+    ]:
+        if any(item.status == status for item in plan.activity_pois):
+            warnings.append(message)
+
+    return TripPoiPlanResponse(
         data=plan,
         meta=ResponseMeta(warnings=warnings),
     )

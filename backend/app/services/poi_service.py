@@ -4,6 +4,8 @@ from pydantic import SecretStr
 
 from app.clients.amap import AmapClient
 from app.models.location import (
+    DistrictQuery,
+    DistrictResult,
     PoiSearchQuery,
     PoiSearchResult,
 )
@@ -51,4 +53,17 @@ class PoiService:
             return client.search_pois(query)
         finally:
             # 成功返回或查询失败时，都关闭已创建的客户端。
+            client.close()
+
+    def resolve_district(self, query: DistrictQuery) -> DistrictResult:
+        """解析唯一行政区，返回供应商确认的名称、编码和来源。"""
+
+        client = AmapClient(
+            api_key=self._api_key,
+            timeout_seconds=self._timeout_seconds,
+        )
+
+        try:
+            return client.resolve_district(query)
+        finally:
             client.close()

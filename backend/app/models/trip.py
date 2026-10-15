@@ -12,7 +12,11 @@ from app.models.common import (
     ApiResponse,
     calculate_day_count,
 )
-from app.models.location import PROVINCE_ADCODE_PATTERN
+from app.models.location import (
+    PROVINCE_ADCODE_PATTERN,
+    DistrictResult,
+    PoiSearchResult,
+)
 from app.models.weather import DailyWeatherItem, ForecastRangeResult
 
 
@@ -484,3 +488,116 @@ class TripPlan(BaseModel):
 TripPreviewResponse: TypeAlias = ApiResponse[TripPreview]
 TripGenerationResponse: TypeAlias = ApiResponse[TripDraft]
 TripPlanResponse: TypeAlias = ApiResponse[TripPlan]
+
+# 单次规划允许的关键词查询次数上限，不包含行政区解析与天气查询。
+MAX_POI_QUERIES = 8
+PoiKeywordSource = Literal["activity_title", "project_rules"]
+PoiCandidateStatus = Literal["found", "empty", "failed", "skipped"]
+
+
+class TripPoiPlanRequest(TripPlanRequest):
+    """在旅行规划请求上增加 POI 查询控制参数。"""
+
+    max_poi_queries: int = Field(
+        default=4,
+        strict=True,
+        ge=1,
+        le=MAX_POI_QUERIES,
+        description="本次规划最多尝试多少次关键词查询，重复关键词复用结果。",
+    )
+    poi_limit: int = Field(
+        default=3,
+        strict=True,
+        ge=1,
+        le=5,
+        description="每个活动最多返回的地点候选数。",
+    )
+
+
+class ActivityPoiCandidates(BaseModel):
+    """某一天、某个时段的地点搜索候选，尚未确认最终地点。"""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    travel_date: Date
+    period: Literal["morning", "afternoon", "evening"]
+    keyword: str = Field(min_length=1, max_length=80)
+    keyword_source: PoiKeywordSource
+    status: PoiCandidateStatus
+    search_result: PoiSearchResult | None = None
+    reason_code: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=100,
+        description="失败或跳过的稳定原因标识；成功时为 null。",
+    )
+
+    @model_validator(mode="after")
+    def validate_search_state(self) -> Self:
+        """确保搜索状态、结果和原因相互一致。"""
+
+        if self.status in ("found", "empty"):
+            if self.search_result is None or self.reason_code is not None:
+                raise ValueError("搜索成功时必须有结果，且不能有失败原因。")
+
+            if self.search_result.keyword != self.keyword:
+                raise ValueError("搜索结果与活动搜索关键词不一致。")
+
+            has_candidates = bool(self.search_result.pois)
+            if has_candidates != (self.status == "found"):
+                raise ValueError("候选列表与搜索状态不一致。")
+
+        elif self.search_result is not None or self.reason_code is None:
+            raise ValueError("失败或跳过时必须提供原因，且不能提供搜索结果。")
+
+        return self
+
+
+class TripPoiPlan(TripPlan):
+    """保留原规划结构，并附加活动地点候选与查询信息。"""
+
+    poi_region: DistrictResult | None = Field(
+        default=None,
+        description="POI 搜索使用的真实行政区；解析失败时为 null。",
+    )
+    poi_query_count: int = Field(
+        strict=True,
+        ge=0,
+        le=MAX_POI_QUERIES,
+        description="已尝试的关键词查询次数，含失败尝试，不含行政区解析。",
+    )
+    activity_pois: list[ActivityPoiCandidates] = Field(
+        min_length=1,
+        max_length=MAX_TRIP_DAYS * 3,
+        description="按旅行日期和活动时段排列的搜索候选记录。",
+    )
+
+    @model_validator(mode="after")
+    def validate_activity_links(self) -> Self:
+        """每个活动必须恰好有一条候选状态记录。"""
+
+        expected = {
+            (day.date, activity.period)
+            for day in self.days
+            for activity in day.activities
+        }
+        actual = [
+            (item.travel_date, item.period)
+            for item in self.activity_pois
+        ]
+
+        if len(actual) != len(set(actual)) or set(actual) != expected:
+            raise ValueError("地点候选必须与每日活动一一对应。")
+
+        for item in self.activity_pois:
+            if item.search_result is not None:
+                if (
+                    self.poi_region is None
+                    or item.search_result.city != self.poi_region.region.adcode
+                ):
+                    raise ValueError("地点搜索结果与已解析的行政区不一致。")
+
+        return self
+
+
+TripPoiPlanResponse: TypeAlias = ApiResponse[TripPoiPlan]
