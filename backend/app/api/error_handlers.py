@@ -4,7 +4,10 @@ from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.clients.amap import AmapError
 from app.llm.client import LLMConfigurationError
-from app.models.errors import ApiError, ErrorResponse
+from app.models.common import (
+    ApiError,
+    ErrorResponse,
+)
 from app.services.trip_generation_service import TripGenerationError
 from app.services.weather_service import WeatherServiceError
 

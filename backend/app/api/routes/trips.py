@@ -7,11 +7,15 @@ from fastapi import APIRouter, Depends
 
 from app.core.config import Settings
 from app.llm.client import create_trip_chat_model
-from app.models.common import ResponseMeta
-from app.models.errors import ErrorResponse
-from app.models.requests import TripRequest
-from app.models.trip import TripPreviewResponse
-from app.models.trip_generation import TripGenerationResponse
+from app.models.common import (
+    ErrorResponse,
+    ResponseMeta,
+)
+from app.models.trip import (
+    TripGenerationResponse,
+    TripPreviewResponse,
+    TripRequest,
+)
 from app.services.trip_generation_service import TripGenerationService
 from app.services.trip_service import TripService
 

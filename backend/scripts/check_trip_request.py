@@ -4,7 +4,7 @@ from datetime import date
 
 from pydantic import ValidationError
 
-from app.models.requests import TripRequest
+from app.models.trip import TripRequest
 
 
 def main() -> None:

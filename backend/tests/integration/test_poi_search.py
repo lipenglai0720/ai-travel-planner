@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.api.routes.pois import get_poi_service
 from app.clients.amap import AmapClient, AmapError
 from app.main import app
-from app.models.poi import (
+from app.models.location import (
     Poi,
     PoiSearchQuery,
     PoiSearchResult,

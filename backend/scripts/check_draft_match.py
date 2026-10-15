@@ -6,8 +6,10 @@ from datetime import date, timedelta
 
 from pydantic import ValidationError
 
-from app.models.requests import TripRequest
-from app.models.trip_draft import TripDraft
+from app.models.trip import (
+    TripDraft,
+    TripRequest,
+)
 from app.services.draft_validation import (
     DraftRequestMismatchError,
     validate_draft_matches_request,

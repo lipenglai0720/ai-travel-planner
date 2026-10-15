@@ -1,6 +1,6 @@
 """在本地查看旅行需求生成的提示词消息。"""
 
-from app.models.requests import TripRequest
+from app.models.trip import TripRequest
 from app.prompts.trip_prompt import (
     TRIP_PROMPT,
     build_trip_messages,

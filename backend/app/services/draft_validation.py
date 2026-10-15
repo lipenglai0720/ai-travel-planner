@@ -2,8 +2,10 @@
 
 from datetime import timedelta
 
-from app.models.requests import TripRequest
-from app.models.trip_draft import TripDraft
+from app.models.trip import (
+    TripDraft,
+    TripRequest,
+)
 
 
 class DraftRequestMismatchError(ValueError):

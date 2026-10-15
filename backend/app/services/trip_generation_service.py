@@ -14,8 +14,10 @@ from openai import (
 )
 from pydantic import ValidationError
 
-from app.models.requests import TripRequest
-from app.models.trip_draft import TripDraft
+from app.models.trip import (
+    TripDraft,
+    TripRequest,
+)
 from app.prompts.trip_prompt import build_trip_messages
 from app.services.draft_validation import (
     DraftRequestMismatchError,

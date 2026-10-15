@@ -9,8 +9,10 @@ import pytest
 from pydantic import SecretStr
 
 from app.clients.amap import AmapClient, AmapError
-from app.models.weather import WeatherQuery
-from app.models.weather_forecast import WeatherForecast
+from app.models.weather import (
+    WeatherForecast,
+    WeatherQuery,
+)
 
 
 Handler = Callable[[httpx.Request], httpx.Response]

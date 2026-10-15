@@ -9,7 +9,7 @@ import pytest
 from pydantic import SecretStr, ValidationError
 
 from app.clients.amap import AmapClient, AmapError
-from app.models.district import (
+from app.models.location import (
     DistrictQuery,
     DistrictResult,
 )

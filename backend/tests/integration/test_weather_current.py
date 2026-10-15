@@ -11,7 +11,7 @@ from fastapi.testclient import TestClient
 from app.api.routes.weather import get_weather_service
 from app.clients.amap import AmapClient, AmapError
 from app.main import app
-from app.models.district import (
+from app.models.location import (
     DistrictInfo,
     DistrictQuery,
     DistrictResult,

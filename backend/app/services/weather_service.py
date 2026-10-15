@@ -3,20 +3,16 @@
 from pydantic import SecretStr
 
 from app.clients.amap import AmapClient, AmapError
-from app.models.district import DistrictQuery
+from app.models.location import DistrictQuery
 from app.models.weather import (
     CurrentWeather,
-    WeatherLookupQuery,
-    WeatherQuery,
-)
-from app.models.forecast_lookup import (
+    ForecastDateRange,
     ForecastLookupQuery,
     ForecastLookupResult,
-)
-from app.models.forecast_range import (
-    ForecastDateRange,
     ForecastRangeQuery,
     TripWeatherResult,
+    WeatherLookupQuery,
+    WeatherQuery,
 )
 from app.services.forecast_coverage import (
     assess_forecast_coverage,

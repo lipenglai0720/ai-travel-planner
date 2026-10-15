@@ -5,17 +5,21 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.core.config import Settings
-from app.models.common import ResponseMeta
-from app.models.errors import ErrorResponse
-from app.models.weather import WeatherLookupQuery
-from app.models.weather_response import (
+from app.models.common import (
+    ErrorResponse,
+    ResponseMeta,
+)
+from app.models.weather import (
+    ForecastLookupQuery,
+    ForecastRangeQuery,
     WeatherCurrentResponse,
-    WeatherForecastResponse,
     WeatherForecastRangeResponse,
+    WeatherForecastResponse,
+    WeatherLookupQuery,
 )
 from app.services.weather_service import WeatherService
-from app.models.forecast_lookup import ForecastLookupQuery
-from app.models.forecast_range import ForecastRangeQuery
+
+
 router = APIRouter(
     prefix="/weather",
     tags=["天气查询"],

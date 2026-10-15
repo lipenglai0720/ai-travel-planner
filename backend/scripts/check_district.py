@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from app.clients.amap import AmapClient, AmapError
 from app.core.config import Settings
-from app.models.district import DistrictQuery
+from app.models.location import DistrictQuery
 
 
 def print_amap_error(exc: AmapError) -> None:

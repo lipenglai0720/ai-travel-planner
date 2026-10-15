@@ -12,7 +12,7 @@ from app.llm.client import (
     LLMConfigurationError,
     create_trip_chat_model,
 )
-from app.models.requests import TripRequest
+from app.models.trip import TripRequest
 from app.services.trip_generation_service import (
     TripGenerationError,
     TripGenerationService,

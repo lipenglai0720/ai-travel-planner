@@ -12,19 +12,17 @@ from pydantic import ValidationError
 from app.api.routes.weather import get_weather_service
 from app.clients.amap import AmapClient, AmapError
 from app.main import app
-from app.models.district import (
+from app.models.location import (
     DistrictInfo,
     DistrictQuery,
     DistrictResult,
 )
-from app.models.forecast_lookup import (
+from app.models.weather import (
+    ForecastDay,
     ForecastLookupQuery,
     ForecastLookupResult,
-)
-from app.models.weather import WeatherQuery
-from app.models.weather_forecast import (
-    ForecastDay,
     WeatherForecast,
+    WeatherQuery,
 )
 from app.services import weather_service as weather_service_module
 from app.services.weather_service import (

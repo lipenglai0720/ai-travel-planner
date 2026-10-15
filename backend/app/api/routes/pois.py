@@ -5,10 +5,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from app.core.config import Settings
-from app.models.common import ResponseMeta
-from app.models.errors import ErrorResponse
-from app.models.poi import PoiSearchQuery
-from app.models.poi_response import PoiSearchResponse
+from app.models.common import (
+    ErrorResponse,
+    ResponseMeta,
+)
+from app.models.location import (
+    PoiSearchQuery,
+    PoiSearchResponse,
+)
 from app.services.poi_service import PoiService
 
 

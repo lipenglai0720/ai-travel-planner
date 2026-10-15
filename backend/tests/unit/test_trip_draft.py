@@ -8,7 +8,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
-from app.models.trip_draft import (
+from app.models.trip import (
     ActivityDraft,
     DayDraft,
     TripDraft,

@@ -5,7 +5,7 @@ import json
 
 from pydantic import ValidationError
 
-from app.models.trip_draft import TripDraft
+from app.models.trip import TripDraft
 
 
 # 手工编写的学习样例，不是模型返回，也不是已核实的旅行安排。

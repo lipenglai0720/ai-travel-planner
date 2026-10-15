@@ -1,7 +1,9 @@
 """旅行业务服务：根据已经校验的请求生成需求摘要。"""
 
-from app.models.requests import TripRequest
-from app.models.trip import TripPreview
+from app.models.trip import (
+    TripPreview,
+    TripRequest,
+)
 
 
 class TripService:

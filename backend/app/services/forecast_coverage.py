@@ -2,15 +2,13 @@
 
 from datetime import date, timedelta
 
-from app.models.forecast_range import (
+from app.models.weather import (
     DailyWeatherItem,
     ForecastCoverageStatus,
     ForecastDateRange,
+    ForecastDay,
     ForecastRangeResult,
     TripWeatherResult,
-)
-from app.models.weather_forecast import (
-    ForecastDay,
     WeatherForecast,
 )
 

@@ -9,7 +9,10 @@ import pytest
 from pydantic import SecretStr
 
 from app.clients.amap import AmapClient, AmapError
-from app.models.poi import PoiSearchQuery, PoiSearchResult
+from app.models.location import (
+    PoiSearchQuery,
+    PoiSearchResult,
+)
 
 
 # 给函数类型起一个名称，简化下面的类型注解。

@@ -2,7 +2,7 @@
 
 import argparse
 
-from app.models.requests import TripRequest
+from app.models.trip import TripRequest
 from app.prompts.trip_prompt import (
     TRIP_PROMPT,
     build_trip_messages,

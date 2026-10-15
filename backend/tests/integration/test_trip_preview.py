@@ -8,8 +8,10 @@ from fastapi.testclient import TestClient
 
 from app.api.routes.trips import get_trip_service
 from app.main import app
-from app.models.requests import TripRequest
-from app.models.trip import TripPreview
+from app.models.trip import (
+    TripPreview,
+    TripRequest,
+)
 from app.services.trip_service import TripService
 
 

@@ -6,8 +6,10 @@ from typing import Any
 import pytest
 from langchain_core.messages import BaseMessage, SystemMessage
 
-from app.models.requests import TripRequest
-from app.models.trip_draft import TripDraft
+from app.models.trip import (
+    TripDraft,
+    TripRequest,
+)
 from app.prompts.trip_prompt import (
     TRIP_PROMPT,
     build_trip_messages,

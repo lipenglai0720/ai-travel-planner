@@ -1,1 +1,1 @@
-"""应用数据模型包：定义请求、响应及业务数据的结构和校验规则。"""
+"""Pydantic 模型包；按 common、location、weather、trip 领域显式导入。"""

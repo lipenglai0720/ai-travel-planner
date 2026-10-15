@@ -6,7 +6,11 @@ from fastapi import Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.models.errors import ApiError, ErrorDetail, ErrorResponse
+from app.models.common import (
+    ApiError,
+    ErrorDetail,
+    ErrorResponse,
+)
 
 
 # 左侧是 Pydantic 或自定义验证器提供的错误类型。

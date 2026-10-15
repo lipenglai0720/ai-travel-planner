@@ -1,30 +1,26 @@
 """调用高德服务，并转换为项目业务模型。"""
 
+from datetime import date, datetime
 from typing import Any
 
 import httpx
 from pydantic import SecretStr
 
-from app.models.district import (
+from app.models.location import (
     DistrictInfo,
     DistrictQuery,
     DistrictResult,
-)
-from app.models.poi import (
     Poi,
     PoiSearchQuery,
     PoiSearchResult,
 )
-from datetime import date, datetime
-
 from app.models.weather import (
     CurrentWeather,
-    WeatherQuery,
-)
-from app.models.weather_forecast import (
     ForecastDay,
     WeatherForecast,
+    WeatherQuery,
 )
+
 AMAP_SEARCH_URL = "https://restapi.amap.com/v3/place/text"
 AMAP_DISTRICT_URL = "https://restapi.amap.com/v3/config/district"
 AMAP_WEATHER_URL = "https://restapi.amap.com/v3/weather/weatherInfo"

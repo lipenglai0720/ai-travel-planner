@@ -3,7 +3,10 @@
 from pydantic import SecretStr
 
 from app.clients.amap import AmapClient
-from app.models.poi import PoiSearchQuery, PoiSearchResult
+from app.models.location import (
+    PoiSearchQuery,
+    PoiSearchResult,
+)
 
 
 class PoiService:

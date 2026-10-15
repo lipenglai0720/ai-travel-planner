@@ -13,8 +13,10 @@ from app.api.routes import trips
 from app.core.config import Settings
 from app.llm.client import LLMConfigurationError
 from app.main import app
-from app.models.requests import TripRequest
-from app.models.trip_draft import TripDraft
+from app.models.trip import (
+    TripDraft,
+    TripRequest,
+)
 from app.services.trip_generation_service import (
     TripGenerationError,
     TripGenerationService,

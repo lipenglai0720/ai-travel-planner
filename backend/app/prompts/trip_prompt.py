@@ -5,8 +5,10 @@ import json
 from langchain_core.messages import BaseMessage
 from langchain_core.prompts import ChatPromptTemplate
 
-from app.models.requests import TripRequest
-from app.models.trip_draft import TripDraft
+from app.models.trip import (
+    TripDraft,
+    TripRequest,
+)
 
 
 SYSTEM_PROMPT = """

@@ -7,7 +7,7 @@ from pydantic import SecretStr, ValidationError
 
 from app.clients.amap import AmapClient, AmapError
 from app.core.config import Settings
-from app.models.poi import PoiSearchQuery
+from app.models.location import PoiSearchQuery
 
 
 def invalid_location_response(
